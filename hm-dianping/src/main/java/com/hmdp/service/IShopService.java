@@ -17,4 +17,5 @@ public interface IShopService extends IService<Shop> {
     Result queryById(Long id);
 
     Result updateShop(Shop shop);
+    void saveShopToCache(Long id, Long expireSeconds) throws InterruptedException;
 }
