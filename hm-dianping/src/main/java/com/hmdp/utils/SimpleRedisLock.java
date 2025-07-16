@@ -1,7 +1,11 @@
 package com.hmdp.utils;
 
-import org.springframework.data.redis.core.StringRedisTemplate;
 
+import cn.hutool.core.lang.UUID;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.core.io.ClassPathResource;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 public class SimpleRedisLock implements ILock{
@@ -15,6 +19,13 @@ public class SimpleRedisLock implements ILock{
      * 锁的名称
      */
     private String name;
+
+    /**
+     * key前缀
+     */
+    public static final String KEY_PREFIX = "lock:";
+
+    public static final String ID_PREFIX = UUID.randomUUID().toString(true) + "-";
 
     public SimpleRedisLock(String name, StringRedisTemplate stringRedisTemplate){
         this.stringRedisTemplate = stringRedisTemplate;
@@ -30,26 +41,47 @@ public class SimpleRedisLock implements ILock{
      */
     @Override
     public boolean tryLock(long timeoutSec) {
-        // 获取锁
-     String id = Thread.currentThread().getId() + "";
-     Boolean ressult = stringRedisTemplate.opsForValue()
-             .setIfAbsent("lock:"+name, id, timeoutSec, TimeUnit.MINUTES);
-     return Boolean.TRUE.equals(ressult);
+        String threadId = ID_PREFIX + Thread.currentThread().getId() + "";
+        // SET lock:name id EX timeoutSec NX
+        Boolean result = stringRedisTemplate.opsForValue()
+                .setIfAbsent(KEY_PREFIX + name, threadId, timeoutSec, TimeUnit.SECONDS);
+        return Boolean.TRUE.equals(result);
+    }
+
+
+    /**
+     * 加载Lua脚本
+     */
+    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
+
+    static {
+        UNLOCK_SCRIPT = new DefaultRedisScript<>();
+        UNLOCK_SCRIPT.setLocation(new ClassPathResource("unlock.lua"));
+        UNLOCK_SCRIPT.setResultType(Long.class);
     }
 
     /**
      * 释放锁
      */
+
     @Override
-    public void unLock() {
-        // 获取线程id
-        String id = Thread.currentThread().getId() + "";
-        // 获取锁中的id
-        String id1 = stringRedisTemplate.opsForValue().get("lock:"+name);
-        // 判断锁中的id和当前线程的id是否一致
-        if (id.equals(id1)){
-            // 释放锁
-            stringRedisTemplate.delete("lock:"+name);
-        }
+    public  void unLock(){
+        // 执行lua脚本
+        stringRedisTemplate.execute(
+                UNLOCK_SCRIPT,
+                Collections.singletonList(KEY_PREFIX + name),
+                ID_PREFIX + Thread.currentThread().getId()
+        );
     }
+    /*@Override
+    public void unLock() {
+        // 判断 锁的线程标识 是否与 当前线程一致
+        String currentThreadFlag = ID_PREFIX + Thread.currentThread().getId();
+        String redisThreadFlag = stringRedisTemplate.opsForValue().get(KEY_PREFIX + name);
+        if (currentThreadFlag != null || currentThreadFlag.equals(redisThreadFlag)) {
+            // 一致，说明当前的锁就是当前线程的锁，可以直接释放
+            stringRedisTemplate.delete(KEY_PREFIX + name);
+       }
+       // 不一致,则不能释放
+    }*/
 }

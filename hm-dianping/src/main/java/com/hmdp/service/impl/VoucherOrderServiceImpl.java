@@ -165,7 +165,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
         // 3、创建对应的订单，并保存到数据库
         VoucherOrder voucherOrder = new VoucherOrder();
-        long orderId = redisIdWorker.nextId("SECKILL_VOUCHER_ORDER");
+        long orderId = redisIdWorker.nextId("order");
         voucherOrder.setId(orderId);
         voucherOrder.setUserId(UserHolder.getUser().getId());
         voucherOrder.setVoucherId(voucherOrder.getId());
